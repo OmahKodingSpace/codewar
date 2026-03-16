@@ -2,13 +2,6 @@
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import {
-  programmingLanguages,
-  difficultyColors,
-  xpByDifficulty,
-  generateQuestions,
-  type CWQuestion
-} from '@/constants/mock-codewar';
 import { cn } from '@/lib/utils';
 import {
   IconSwords,
@@ -18,21 +11,46 @@ import {
   IconArrowLeft,
   IconArrowRight,
   IconConfetti,
-  IconFlame
+  IconFlame,
+  IconLoader2,
+  IconCalendar
 } from '@tabler/icons-react';
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import { toast } from 'sonner';
+
+const difficultyColors: Record<string, string> = {
+  easy: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300',
+  medium:
+    'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300',
+  hard: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300',
+  expert:
+    'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300'
+};
+
+const xpByDifficulty: Record<string, number> = {
+  easy: 50,
+  medium: 100,
+  hard: 200,
+  expert: 350
+};
 
 type Difficulty = 'easy' | 'medium' | 'hard' | 'expert';
-type Phase = 'select' | 'quiz' | 'result';
+type Phase = 'loading' | 'select' | 'quiz' | 'result';
 
-interface DailyResult {
+interface Question {
+  id: string;
+  question: string;
+  options: string[];
+  correctIndex: number;
+}
+
+interface ChallengeData {
+  id: string;
+  title: string;
+  description: string;
   language: string;
-  difficulty: Difficulty;
-  correctCount: number;
-  totalQuestions: number;
-  xpEarned: number;
-  answers: (number | null)[];
-  questions: CWQuestion[];
+  difficulty: string;
+  xpReward: number;
 }
 
 const diffEmoji: Record<string, string> = {
@@ -45,32 +63,87 @@ const diffEmoji: Record<string, string> = {
 export default function ChallengesPage() {
   const [language, setLanguage] = useState<string>('');
   const [difficulty, setDifficulty] = useState<Difficulty | ''>('');
-  const [phase, setPhase] = useState<Phase>('select');
-  const [questions, setQuestions] = useState<CWQuestion[]>([]);
+  const [phase, setPhase] = useState<Phase>('loading');
+  const [challenge, setChallenge] = useState<ChallengeData | null>(null);
+  const [questions, setQuestions] = useState<Question[]>([]);
   const [currentQ, setCurrentQ] = useState(0);
   const [answers, setAnswers] = useState<(number | null)[]>([]);
-  const [dailyResults, setDailyResults] = useState<DailyResult[]>([]);
+  const [availableLanguages, setAvailableLanguages] = useState<string[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
   const difficulties: Difficulty[] = ['easy', 'medium', 'hard', 'expert'];
 
-  // Check if this combo was completed today
-  const hasCompleted = (lang: string, diff: string) =>
-    dailyResults.some((r) => r.language === lang && r.difficulty === diff);
+  // Check if user already completed today's challenge
+  const checkToday = useCallback(async () => {
+    try {
+      const res = await fetch('/api/challenges/today');
+      if (!res.ok) {
+        setPhase('select');
+        return;
+      }
+      const data = await res.json();
+      if (data.attempt) {
+        // Already completed today — show result
+        setChallenge({
+          id: data.attempt.challengeId,
+          title: data.attempt.title,
+          description: '',
+          language: data.attempt.language,
+          difficulty: data.attempt.difficulty,
+          xpReward: data.attempt.xpReward
+        });
+        setQuestions(data.attempt.questions);
+        setAnswers(data.attempt.answers);
+        setLanguage(data.attempt.language);
+        setDifficulty(data.attempt.difficulty as Difficulty);
+        setPhase('result');
+      } else {
+        setPhase('select');
+      }
+    } catch {
+      setPhase('select');
+    }
+  }, []);
 
-  const currentResult =
-    language && difficulty
-      ? dailyResults.find(
-          (r) => r.language === language && r.difficulty === difficulty
-        )
-      : null;
+  useEffect(() => {
+    // Load languages and check today's status in parallel
+    Promise.all([
+      fetch('/api/languages')
+        .then((res) => res.json())
+        .then((data) => {
+          setAvailableLanguages(
+            data.languages?.map((l: { name: string }) => l.name) ?? []
+          );
+        })
+        .catch(() => {}),
+      checkToday()
+    ]);
+  }, [checkToday]);
 
-  function startChallenge() {
+  async function startChallenge() {
     if (!language || !difficulty) return;
-    const q = generateQuestions(language, difficulty);
-    setQuestions(q);
-    setAnswers(Array.from({ length: q.length }, () => null));
-    setCurrentQ(0);
-    setPhase('quiz');
+    setLoading(true);
+    try {
+      const res = await fetch(
+        `/api/challenges?language=${encodeURIComponent(language)}&difficulty=${difficulty}`
+      );
+      if (!res.ok) {
+        const data = await res.json();
+        toast.error(data.error || 'Failed to load challenge');
+        setLoading(false);
+        return;
+      }
+      const data = await res.json();
+      setChallenge(data.challenge);
+      setQuestions(data.questions);
+      setAnswers(Array.from({ length: data.questions.length }, () => null));
+      setCurrentQ(0);
+      setPhase('quiz');
+    } catch {
+      toast.error('Failed to load challenge');
+    }
+    setLoading(false);
   }
 
   function selectAnswer(i: number) {
@@ -79,23 +152,34 @@ export default function ChallengesPage() {
     setAnswers(next);
   }
 
-  function finishQuiz() {
-    const correct = answers.reduce<number>(
-      (c, a, i) => c + (a === questions[i].correctIndex ? 1 : 0),
-      0
+  async function finishQuiz() {
+    if (!challenge) return;
+    setSubmitting(true);
+    try {
+      const res = await fetch(`/api/challenges/${challenge.id}/submit`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ answers })
+      });
+      if (!res.ok) {
+        toast.error('Failed to submit');
+        setSubmitting(false);
+        return;
+      }
+      setPhase('result');
+    } catch {
+      toast.error('Failed to submit');
+    }
+    setSubmitting(false);
+  }
+
+  // --- LOADING ---
+  if (phase === 'loading') {
+    return (
+      <div className='flex min-h-[60vh] items-center justify-center'>
+        <IconLoader2 className='text-muted-foreground size-8 animate-spin' />
+      </div>
     );
-    const xpPerQ = Math.floor(xpByDifficulty[difficulty as Difficulty] / 5);
-    const result: DailyResult = {
-      language,
-      difficulty: difficulty as Difficulty,
-      correctCount: correct,
-      totalQuestions: questions.length,
-      xpEarned: correct * xpPerQ,
-      answers,
-      questions
-    };
-    setDailyResults((prev) => [...prev, result]);
-    setPhase('result');
   }
 
   // --- SELECT PHASE ---
@@ -103,9 +187,9 @@ export default function ChallengesPage() {
     return (
       <div className='space-y-6'>
         <div>
-          <h1 className='text-2xl font-bold'>Challenges</h1>
+          <h1 className='text-2xl font-bold'>Daily Challenge</h1>
           <p className='text-muted-foreground text-sm'>
-            Pick your weapon and difficulty
+            Pick your weapon and difficulty — one challenge per day!
           </p>
         </div>
 
@@ -115,7 +199,7 @@ export default function ChallengesPage() {
             Programming Language
           </h2>
           <div className='grid grid-cols-2 gap-2 sm:grid-cols-3'>
-            {programmingLanguages.map((lang) => (
+            {availableLanguages.map((lang) => (
               <button
                 key={lang}
                 onClick={() => setLanguage(lang)}
@@ -156,61 +240,16 @@ export default function ChallengesPage() {
                     +{xpByDifficulty[diff]} XP
                   </p>
                 </div>
-                {language && hasCompleted(language, diff) && (
-                  <IconCheck className='ml-auto size-5 text-green-500' />
-                )}
               </button>
             ))}
           </div>
         </section>
 
-        {/* Today's completed results */}
-        {dailyResults.length > 0 && (
-          <section>
-            <h2 className='text-muted-foreground mb-3 text-sm font-semibold tracking-wider uppercase'>
-              Today&apos;s Results
-            </h2>
-            <div className='space-y-2'>
-              {dailyResults.map((r, i) => (
-                <button
-                  key={i}
-                  onClick={() => {
-                    setLanguage(r.language);
-                    setDifficulty(r.difficulty);
-                    setQuestions(r.questions);
-                    setAnswers(r.answers);
-                    setPhase('result');
-                  }}
-                  className='flex w-full items-center justify-between rounded-xl border bg-green-50/50 p-3.5 text-left transition-colors hover:bg-green-50 dark:bg-green-950/20'
-                >
-                  <div className='flex items-center gap-3'>
-                    <IconCheck className='size-5 text-green-500' />
-                    <div>
-                      <p className='text-sm font-medium'>
-                        {r.language}{' '}
-                        <span className='text-muted-foreground capitalize'>
-                          ({r.difficulty})
-                        </span>
-                      </p>
-                      <p className='text-muted-foreground text-xs'>
-                        {r.correctCount}/{r.totalQuestions} correct
-                      </p>
-                    </div>
-                  </div>
-                  <span className='text-sm font-bold text-green-600 dark:text-green-400'>
-                    +{r.xpEarned} XP
-                  </span>
-                </button>
-              ))}
-            </div>
-          </section>
-        )}
-
         {/* Start Button */}
-        {language && difficulty && !currentResult && (
+        {language && difficulty && (
           <div className='rounded-xl border border-dashed border-violet-300 bg-violet-50 p-4 text-center dark:border-violet-800 dark:bg-violet-950/30'>
             <p className='text-sm font-medium'>
-              🤫 5 surprise {language} questions await!
+              5 AI-generated {language} questions await!
             </p>
             <p className='text-muted-foreground mt-1 text-xs'>
               Difficulty:{' '}
@@ -223,32 +262,14 @@ export default function ChallengesPage() {
             <Button
               className='mt-4 h-12 w-full rounded-xl bg-gradient-to-r from-violet-500 to-fuchsia-500 text-base font-bold text-white shadow-lg shadow-violet-500/25 hover:from-violet-600 hover:to-fuchsia-600'
               onClick={startChallenge}
+              disabled={loading}
             >
-              <IconSwords className='mr-2 size-5' />
-              Start Challenge
-            </Button>
-          </div>
-        )}
-
-        {language && difficulty && currentResult && (
-          <div className='rounded-xl border border-green-300 bg-green-50/50 p-4 text-center dark:border-green-800 dark:bg-green-950/20'>
-            <p className='text-sm font-medium text-green-700 dark:text-green-400'>
-              Already completed today!
-            </p>
-            <p className='text-muted-foreground mt-1 text-xs'>
-              Score: {currentResult.correctCount}/{currentResult.totalQuestions}{' '}
-              | +{currentResult.xpEarned} XP
-            </p>
-            <Button
-              variant='outline'
-              className='mt-3 rounded-xl'
-              onClick={() => {
-                setQuestions(currentResult.questions);
-                setAnswers(currentResult.answers);
-                setPhase('result');
-              }}
-            >
-              View Results
+              {loading ? (
+                <IconLoader2 className='mr-2 size-5 animate-spin' />
+              ) : (
+                <IconSwords className='mr-2 size-5' />
+              )}
+              {loading ? 'Generating Challenge...' : 'Start Daily Challenge'}
             </Button>
           </div>
         )}
@@ -360,10 +381,14 @@ export default function ChallengesPage() {
             <Button
               className='rounded-xl bg-gradient-to-r from-green-500 to-emerald-500 font-bold text-white hover:from-green-600 hover:to-emerald-600'
               onClick={finishQuiz}
-              disabled={!allAnswered}
+              disabled={!allAnswered || submitting}
             >
-              <IconLock className='mr-1 size-4' />
-              Submit & Lock
+              {submitting ? (
+                <IconLoader2 className='mr-1 size-4 animate-spin' />
+              ) : (
+                <IconLock className='mr-1 size-4' />
+              )}
+              {submitting ? 'Submitting...' : 'Submit & Lock'}
             </Button>
           )}
         </div>
@@ -378,12 +403,12 @@ export default function ChallengesPage() {
 
   // --- RESULT PHASE ---
   const correctCount = answers.reduce<number>(
-    (c, a, i) => c + (a === questions[i].correctIndex ? 1 : 0),
+    (c, a, i) => c + (a === questions[i]?.correctIndex ? 1 : 0),
     0
   );
-  const xpPerQ = Math.floor(
-    xpByDifficulty[difficulty as Difficulty] / questions.length
-  );
+  const xpPerQ = challenge
+    ? Math.floor(challenge.xpReward / questions.length)
+    : 0;
   const totalXpEarned = correctCount * xpPerQ;
 
   return (
@@ -523,16 +548,14 @@ export default function ChallengesPage() {
         </div>
       </div>
 
-      <Button
-        className='h-11 w-full rounded-xl bg-gradient-to-r from-violet-500 to-fuchsia-500 font-semibold text-white hover:from-violet-600 hover:to-fuchsia-600'
-        onClick={() => {
-          setPhase('select');
-          setLanguage('');
-          setDifficulty('');
-        }}
-      >
-        New Challenge
-      </Button>
+      {/* Come back tomorrow */}
+      <div className='rounded-xl border border-dashed border-violet-300 bg-violet-50/50 p-4 text-center dark:border-violet-800 dark:bg-violet-950/20'>
+        <IconCalendar className='mx-auto size-8 text-violet-500' />
+        <p className='mt-2 text-sm font-semibold'>Come back tomorrow!</p>
+        <p className='text-muted-foreground mt-1 text-xs'>
+          A fresh AI-generated challenge awaits you every day.
+        </p>
+      </div>
     </div>
   );
 }
