@@ -1,26 +1,16 @@
-'use client';
-
 import PageContainer from '@/components/layout/page-container';
-import { OrganizationProfile } from '@clerk/nextjs';
-import { dark } from '@clerk/themes';
-import { useTheme } from 'next-themes';
-import { teamInfoContent } from '@/config/infoconfig';
 
 export default function TeamPage() {
-  const { theme } = useTheme();
-  const isDark = theme === 'dark';
-
   return (
     <PageContainer
       pageTitle='Team Management'
-      pageDescription='Manage your workspace team, members, roles, security and more.'
-      infoContent={teamInfoContent}
+      pageDescription='Team management feature coming soon'
     >
-      <OrganizationProfile
-        appearance={{
-          baseTheme: isDark ? dark : undefined
-        }}
-      />
+      <div className='flex min-h-[400px] items-center justify-center'>
+        <p className='text-muted-foreground'>
+          Team management feature is not yet available.
+        </p>
+      </div>
     </PageContainer>
   );
 }

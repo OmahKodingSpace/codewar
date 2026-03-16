@@ -3,17 +3,26 @@
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { cn } from '@/lib/utils';
-import { IconBrandGithub, IconSwords } from '@tabler/icons-react';
+import { useAuth } from '@/lib/auth-context';
+import { IconSwords } from '@tabler/icons-react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useState } from 'react';
+import { toast } from 'sonner';
 
 export default function LoginPage() {
-  const router = useRouter();
+  const { login } = useAuth();
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    router.push('/');
+    setLoading(true);
+    const result = await login(username, password);
+    if (result.error) {
+      toast.error(result.error);
+    }
+    setLoading(false);
   }
 
   return (
@@ -35,12 +44,14 @@ export default function LoginPage() {
         {/* Form */}
         <form onSubmit={handleSubmit} className='space-y-4'>
           <div className='space-y-2'>
-            <Label htmlFor='email'>Email</Label>
+            <Label htmlFor='username'>Username</Label>
             <Input
-              id='email'
-              type='email'
-              placeholder='warrior@codewar.dev'
-              defaultValue='alex.johnson@example.com'
+              id='username'
+              placeholder='codehero'
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              disabled={loading}
+              required
               className='h-11 rounded-xl'
             />
           </div>
@@ -49,38 +60,22 @@ export default function LoginPage() {
             <Input
               id='password'
               type='password'
-              defaultValue='password123'
+              placeholder='Enter your password'
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              disabled={loading}
+              required
               className='h-11 rounded-xl'
             />
           </div>
           <Button
             type='submit'
+            disabled={loading}
             className='h-11 w-full rounded-xl bg-gradient-to-r from-violet-500 to-fuchsia-500 font-semibold text-white hover:from-violet-600 hover:to-fuchsia-600'
           >
-            Enter the Arena
+            {loading ? 'Signing in...' : 'Enter the Arena'}
           </Button>
         </form>
-
-        {/* Divider */}
-        <div className='relative'>
-          <div className='absolute inset-0 flex items-center'>
-            <span className='w-full border-t' />
-          </div>
-          <div className='relative flex justify-center text-xs uppercase'>
-            <span className={cn('bg-background text-muted-foreground px-2')}>
-              or
-            </span>
-          </div>
-        </div>
-
-        <Button
-          variant='outline'
-          className='h-11 w-full rounded-xl'
-          onClick={() => router.push('/')}
-        >
-          <IconBrandGithub className='mr-2 size-5' />
-          Continue with GitHub
-        </Button>
 
         <p className='text-muted-foreground text-center text-sm'>
           New warrior?{' '}

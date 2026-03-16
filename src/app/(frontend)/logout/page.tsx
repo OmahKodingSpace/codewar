@@ -1,10 +1,12 @@
 'use client';
 
 import { Button } from '@/components/ui/button';
+import { useAuth } from '@/lib/auth-context';
 import { IconLogout, IconSwords } from '@tabler/icons-react';
 import { useRouter } from 'next/navigation';
 
 export default function LogoutPage() {
+  const { logout } = useAuth();
   const router = useRouter();
 
   return (
@@ -23,7 +25,7 @@ export default function LogoutPage() {
           <Button
             variant='destructive'
             className='h-11 w-full rounded-xl'
-            onClick={() => router.push('/login')}
+            onClick={() => logout()}
           >
             Sign Out
           </Button>

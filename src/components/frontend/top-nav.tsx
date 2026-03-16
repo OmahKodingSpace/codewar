@@ -1,12 +1,11 @@
 'use client';
 
 import { cn } from '@/lib/utils';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
-import { currentUser } from '@/constants/mock-codewar';
+import { useAuth } from '@/lib/auth-context';
 import {
   IconSwords,
-  IconFlame,
   IconHome,
   IconTrophy,
   IconMedal,
@@ -25,6 +24,7 @@ const navLinks = [
 
 export default function TopNav() {
   const pathname = usePathname();
+  const { user } = useAuth();
 
   return (
     <header className='bg-background/80 sticky top-0 z-50 hidden border-b backdrop-blur-xl md:block'>
@@ -61,18 +61,26 @@ export default function TopNav() {
           </nav>
         </div>
         <div className='flex items-center gap-3'>
-          <div className='flex items-center gap-1.5 rounded-full bg-orange-100 px-3 py-1.5 text-sm font-semibold text-orange-600 dark:bg-orange-900/30 dark:text-orange-400'>
-            <IconFlame className='size-4' />
-            {currentUser.streak}
-          </div>
-          <Link href='/profile'>
-            <Button variant='ghost' size='icon' className='rounded-full'>
-              <Avatar className='size-8'>
-                <AvatarImage src={currentUser.avatar} alt={currentUser.name} />
-                <AvatarFallback>{currentUser.name.charAt(0)}</AvatarFallback>
-              </Avatar>
-            </Button>
-          </Link>
+          {user ? (
+            <Link href='/profile'>
+              <Button variant='ghost' size='icon' className='rounded-full'>
+                <Avatar className='size-8'>
+                  <AvatarFallback>
+                    {user.username.slice(0, 2).toUpperCase()}
+                  </AvatarFallback>
+                </Avatar>
+              </Button>
+            </Link>
+          ) : (
+            <Link href='/login'>
+              <Button
+                size='sm'
+                className='rounded-lg bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white'
+              >
+                Sign In
+              </Button>
+            </Link>
+          )}
         </div>
       </div>
     </header>

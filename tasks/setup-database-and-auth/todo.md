@@ -1,4 +1,4 @@
-# Task TODO: <task-title>
+# Task TODO: Setup Database and Auth
 
 ## Scope
 
@@ -8,7 +8,7 @@
 
 ## Implementation
 
-- Status: `[todo]`
+- Status: `[done]`
 - Goal: Database with Neon and Drizzle and Auth with Neon Database Ready to use.
 - Why: I want to do auth with Neon Database and Drizzle.
 - Inputs: username and password to login and register.
@@ -19,8 +19,8 @@
   - Use Drizzle for ORM
   - Use Neon database for Auth
 - Acceptance criteria:
-  - [ ] Database with Neon and Drizzle and Auth with Neon Database Ready to use.
-  - [ ] Neon can be used
-  - [ ] Login, Logout, Register for frontend work well
+  - [x] Database with Neon and Drizzle and Auth with Neon Database Ready to use.
+  - [x] Neon can be used
+  - [x] Login, Logout, Register for frontend work well
 - Validation:
-  - [ ] `bun run build` passes successfully
+  - [x] `bun run build` passes successfully

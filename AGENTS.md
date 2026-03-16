@@ -6,13 +6,14 @@ This file provides essential information for AI coding agents working on this pr
 
 ## Project Overview
 
-**Next.js Admin Dashboard Starter** is a production-ready admin dashboard template built with:
+**CodeWar** is a coding challenge platform built with:
 
 - **Framework**: Next.js 16 (App Router)
 - **Language**: TypeScript 5.7
 - **Styling**: Tailwind CSS v4
 - **UI Components**: shadcn/ui (New York style)
-- **Authentication**: Clerk (with Organizations/Billing support)
+- **Database**: Neon (serverless Postgres) + Drizzle ORM
+- **Authentication**: Custom JWT-based auth with bcrypt password hashing
 - **Error Tracking**: Sentry
 - **Package Manager**: Bun (preferred) or npm
 
@@ -39,10 +40,17 @@ The project follows a feature-based folder structure designed for scalability in
 - React Hook Form + Zod for form handling
 
 ### Authentication & Authorization
-- Clerk for authentication and user management
-- Clerk Organizations for multi-tenant workspaces
-- Clerk Billing for subscription management (B2B)
-- Client-side RBAC for navigation visibility
+- Custom JWT-based auth using `jose` library
+- Password hashing with `bcryptjs`
+- HTTP-only cookie session management
+- Auth context via `useAuth()` hook from `src/lib/auth-context.tsx`
+- Middleware-based route protection (`src/middleware.ts`)
+
+### Database
+- Neon serverless Postgres (`@neondatabase/serverless`)
+- Drizzle ORM for type-safe queries
+- Schema defined in `src/lib/db/schema.ts`
+- DB connection in `src/lib/db/index.ts`
 
 ### Data & APIs
 - TanStack Table for data tables
@@ -63,15 +71,15 @@ The project follows a feature-based folder structure designed for scalability in
 /src
 ├── app/                    # Next.js App Router
 │   ├── auth/              # Authentication routes (sign-in, sign-up)
+│   ├── api/auth/          # Auth API routes (login, register, logout, me)
 │   ├── dashboard/         # Dashboard routes
 │   │   ├── overview/      # Parallel routes (@area_stats, @bar_stats, etc.)
 │   │   ├── product/       # Product management pages
 │   │   ├── kanban/        # Kanban board page
-│   │   ├── workspaces/    # Organization management
-│   │   ├── billing/       # Subscription billing
-│   │   ├── exclusive/     # Pro plan feature example
+│   │   ├── workspaces/    # Workspace management (placeholder)
+│   │   ├── billing/       # Billing (placeholder)
+│   │   ├── exclusive/     # Exclusive features (placeholder)
 │   │   └── profile/       # User profile
-│   ├── api/               # API routes (if any)
 │   ├── layout.tsx         # Root layout with providers
 │   ├── page.tsx           # Landing page
 │   ├── global-error.tsx   # Sentry-integrated error boundary
@@ -87,22 +95,27 @@ The project follows a feature-based folder structure designed for scalability in
 │   └── ...
 │
 ├── features/              # Feature-based modules
-│   ├── auth/              # Authentication components
+│   ├── auth/              # Authentication components (sign-in, sign-up views)
 │   ├── overview/          # Dashboard analytics
 │   ├── products/          # Product management
 │   ├── kanban/            # Kanban board with dnd-kit
 │   └── profile/           # Profile management
 │
 ├── config/                # Configuration files
-│   ├── nav-config.ts      # Navigation with RBAC
+│   ├── nav-config.ts      # Navigation configuration
 │   └── ...
 │
 ├── hooks/                 # Custom React hooks
-│   ├── use-nav.ts         # RBAC navigation filtering
+│   ├── use-nav.ts         # Navigation filtering
 │   ├── use-data-table.ts  # Data table state
 │   └── ...
 │
 ├── lib/                   # Utility functions
+│   ├── db/                # Database (Neon + Drizzle)
+│   │   ├── index.ts       # DB connection
+│   │   └── schema.ts      # Drizzle schema (users table)
+│   ├── auth.ts            # JWT auth utilities (create/verify token, cookies)
+│   ├── auth-context.tsx   # React auth context & useAuth() hook
 │   ├── utils.ts           # cn() and formatters
 │   ├── searchparams.ts    # Search param utilities
 │   └── ...
@@ -110,19 +123,14 @@ The project follows a feature-based folder structure designed for scalability in
 ├── types/                 # TypeScript type definitions
 │   └── index.ts           # Core types (NavItem, etc.)
 │
+├── middleware.ts           # Route protection middleware
+│
 └── styles/                # Global styles
     ├── globals.css        # Tailwind imports + view transitions
     ├── theme.css          # Theme imports
     └── themes/            # Individual theme files
 
-/docs                      # Documentation
-│   ├── clerk_setup.md     # Clerk configuration guide
-│   ├── nav-rbac.md        # Navigation RBAC documentation
-│   └── themes.md          # Theme customization guide
-
-/__CLEANUP__               # Feature removal scripts
-    ├── scripts/           # Cleanup automation
-    └── clerk/             # Templates after Clerk removal
+/drizzle.config.ts         # Drizzle Kit configuration
 ```
 
 ---
@@ -141,6 +149,12 @@ bun run build
 
 # Start production server
 bun run start
+
+# Database
+bun run db:push      # Push schema to Neon
+bun run db:generate  # Generate migrations
+bun run db:migrate   # Run migrations
+bun run db:studio    # Open Drizzle Studio
 
 # Linting
 bun run lint         # Run ESLint
@@ -161,16 +175,10 @@ bun run prepare      # Install Husky hooks
 
 Copy `env.example.txt` to `.env.local` and configure:
 
-### Required for Authentication (Clerk)
+### Required for Database & Auth
 ```env
-NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_...
-CLERK_SECRET_KEY=sk_...
-
-# Redirect URLs
-NEXT_PUBLIC_CLERK_SIGN_IN_URL="/auth/sign-in"
-NEXT_PUBLIC_CLERK_SIGN_UP_URL="/auth/sign-up"
-NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL="/dashboard/overview"
-NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL="/dashboard/overview"
+DATABASE_URL=postgresql://user:password@host/dbname?sslmode=require
+JWT_SECRET=your-secret-key-change-in-production
 ```
 
 ### Optional for Error Tracking (Sentry)
@@ -181,8 +189,6 @@ NEXT_PUBLIC_SENTRY_PROJECT=your-project
 SENTRY_AUTH_TOKEN=sntrys_...
 NEXT_PUBLIC_SENTRY_DISABLED="false"  # Set to "true" to disable in dev
 ```
-
-**Note**: Clerk supports "keyless mode" - the app works without API keys for initial development.
 
 ---
 
@@ -244,11 +250,71 @@ The project uses a sophisticated multi-theme system with 6 built-in themes:
 4. (Optional) Add fonts in `font.config.ts`
 5. (Optional) Set as default in `theme.config.ts`
 
-See `docs/themes.md` for detailed theming guide.
+---
+
+## Authentication System
+
+### Architecture
+- **API routes**: `src/app/api/auth/` (register, login, logout, me)
+- **JWT tokens**: Created with `jose`, stored as HTTP-only cookies
+- **Password hashing**: `bcryptjs` with 12 salt rounds
+- **Auth context**: `useAuth()` hook provides `user`, `login`, `register`, `logout`
+- **Middleware**: `src/middleware.ts` protects routes by checking for auth cookie
+
+### Auth API Routes
+- `POST /api/auth/register` - Register with username/password
+- `POST /api/auth/login` - Login with username/password
+- `POST /api/auth/logout` - Clear auth cookie
+- `GET /api/auth/me` - Get current user from JWT
+
+### Protected Routes
+The middleware in `src/middleware.ts` redirects unauthenticated users to `/auth/sign-in` for all routes except public paths (`/auth`, `/api/auth`, `/`, `/about`, etc.).
+
+### Using Auth in Components
+```tsx
+'use client';
+import { useAuth } from '@/lib/auth-context';
+
+function MyComponent() {
+  const { user, loading, logout } = useAuth();
+  if (!user) return null;
+  return <div>Hello {user.username}</div>;
+}
+```
+
+### Server-side Auth Check
+```tsx
+import { getAuthFromCookie } from '@/lib/auth';
+
+export default async function Page() {
+  const auth = await getAuthFromCookie();
+  if (!auth) redirect('/auth/sign-in');
+  // auth.userId, auth.username available
+}
+```
 
 ---
 
-## Navigation & RBAC System
+## Database Schema
+
+### Users Table
+```sql
+CREATE TABLE users (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  username TEXT NOT NULL UNIQUE,
+  password_hash TEXT NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+```
+
+### Adding New Tables
+1. Define table in `src/lib/db/schema.ts` using Drizzle's `pgTable`
+2. Run `bun run db:push` to push changes to Neon
+
+---
+
+## Navigation System
 
 ### Navigation Configuration
 Navigation is defined in `src/config/nav-config.ts`:
@@ -259,59 +325,13 @@ export const navItems: NavItem[] = [
     title: 'Dashboard',
     url: '/dashboard/overview',
     icon: 'dashboard',
-    shortcut: ['d', 'd'],
-    access: { requireOrg: true }  // RBAC check
+    shortcut: ['d', 'd']
   }
 ];
 ```
 
-### Access Control Properties
-- `requireOrg: boolean` - Requires active organization
-- `permission: string` - Requires specific permission
-- `role: string` - Requires specific role
-- `plan: string` - Requires specific subscription plan
-- `feature: string` - Requires specific feature
-
 ### Client-Side Filtering
-The `useFilteredNavItems()` hook in `src/hooks/use-nav.ts` filters navigation client-side using Clerk's `useOrganization()` and `useUser()` hooks. This is for UX only - actual security checks must happen server-side.
-
----
-
-## Authentication Patterns
-
-### Protected Routes
-Dashboard routes use Clerk's middleware pattern. Pages that require organization:
-
-```tsx
-import { auth } from '@clerk/nextjs';
-import { redirect } from 'next/navigation';
-
-export default async function Page() {
-  const { orgId } = await auth();
-  if (!orgId) redirect('/dashboard/workspaces');
-  // ...
-}
-```
-
-### Plan/Feature Protection
-Use Clerk's `<Protect>` component for client-side:
-
-```tsx
-import { Protect } from '@clerk/nextjs';
-
-<Protect plan="pro" fallback={<UpgradePrompt />}>
-  <PremiumContent />
-</Protect>
-```
-
-Use `has()` function for server-side checks:
-
-```tsx
-import { auth } from '@clerk/nextjs';
-
-const { has } = await auth();
-const hasFeature = has({ feature: 'premium_access' });
-```
+The `useFilteredNavItems()` hook in `src/hooks/use-nav.ts` filters navigation items based on the `access` property. Items with `requireOrg: true` are hidden (organizations feature not yet implemented).
 
 ---
 
@@ -322,7 +342,7 @@ Fetch data directly in async components:
 
 ```tsx
 export default async function ProductPage() {
-  const products = await getProducts(); // Your data fetch
+  const products = await getProducts();
   return <ProductTable data={products} />;
 }
 ```
@@ -357,10 +377,6 @@ To disable Sentry in development:
 NEXT_PUBLIC_SENTRY_DISABLED="true"
 ```
 
-### Error Boundaries
-- `global-error.tsx` - Catches all errors, reports to Sentry
-- Parallel route `error.tsx` files for specific sections
-
 ---
 
 ## Testing Strategy
@@ -370,14 +386,6 @@ NEXT_PUBLIC_SENTRY_DISABLED="true"
 - **Unit tests**: Vitest or Jest for utilities and hooks
 - **Component tests**: React Testing Library for UI components
 - **E2E tests**: Playwright for critical user flows
-
-Recommended test locations:
-```
-/src
-  /__tests__           # Unit tests
-  /features/*/tests    # Feature tests
-/e2e                   # Playwright tests
-```
 
 ---
 
@@ -390,35 +398,14 @@ Recommended test locations:
 
 ### Environment Variables for Production
 Ensure these are set in your deployment platform:
-- `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`
-- `CLERK_SECRET_KEY`
-- All `NEXT_PUBLIC_*` variables for client-side access
+- `DATABASE_URL` - Neon connection string
+- `JWT_SECRET` - Strong random secret for JWT signing
 - `SENTRY_*` variables if using error tracking
 
 ### Build Considerations
 - Output: Static + Server (default Next.js)
-- Images: Configured for `api.slingacademy.com`, `img.clerk.com`, `clerk.com`
+- Images: Configured for `api.slingacademy.com`
 - Sentry source maps uploaded automatically in CI
-
----
-
-## Feature Cleanup System
-
-The `__CLEANUP__` folder contains scripts to remove optional features:
-
-```bash
-# List available features
-node __CLEANUP__/scripts/cleanup.js --list
-
-# Remove specific features
-node __CLEANUP__/scripts/cleanup.js clerk    # Remove auth/org/billing
-node __CLEANUP__/scripts/cleanup.js kanban   # Remove kanban board
-node __CLEANUP__/scripts/cleanup.js sentry   # Remove error tracking
-```
-
-**Safety**: Script requires git repository with at least one commit. Use `--force` to skip.
-
-After cleanup, delete the `__CLEANUP__` folder.
 
 ---
 
@@ -439,7 +426,7 @@ npx shadcn add component-name
 ```
 
 ### Adding a New Theme
-See "Theming System" section above or `docs/themes.md`.
+See "Theming System" section above.
 
 ---
 
@@ -451,9 +438,9 @@ See "Theming System" section above or `docs/themes.md`.
 - Ensure using Tailwind CSS v4 syntax (`@import 'tailwindcss'`)
 - Check `postcss.config.js` uses `@tailwindcss/postcss`
 
-**Clerk keyless mode popup**
-- Normal in development without API keys
-- Click popup to claim application or set env variables
+**Database connection errors**
+- Verify `DATABASE_URL` in `.env.local` is correct
+- Ensure Neon project is active and not suspended
 
 **Theme not applying**
 - Check theme name matches in CSS `[data-theme]` and `theme.config.ts`
@@ -461,14 +448,15 @@ See "Theming System" section above or `docs/themes.md`.
 
 **Navigation items not showing**
 - Check `access` property in nav config
-- Verify user has required org/permission/role
+- Items with `requireOrg: true` are hidden by default
 
 ---
 
 ## External Documentation
 
 - [Next.js App Router](https://nextjs.org/docs/app)
-- [Clerk Next.js SDK](https://clerk.com/docs/references/nextjs)
+- [Drizzle ORM](https://orm.drizzle.team/docs/overview)
+- [Neon Serverless](https://neon.tech/docs)
 - [shadcn/ui](https://ui.shadcn.com/docs)
 - [Tailwind CSS v4](https://tailwindcss.com/docs)
 - [TanStack Table](https://tanstack.com/table/latest)
@@ -485,3 +473,5 @@ See "Theming System" section above or `docs/themes.md`.
 5. **Follow existing patterns** - look at similar components before creating new ones
 6. **Environment variables** - prefix with `NEXT_PUBLIC_` for client-side access
 7. **shadcn components** - don't modify files in `src/components/ui/` directly; extend them instead
+8. **Auth** - use `useAuth()` hook client-side, `getAuthFromCookie()` server-side
+9. **Database** - use Drizzle ORM via `db` from `src/lib/db` for all queries

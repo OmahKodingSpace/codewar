@@ -3,17 +3,31 @@
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { cn } from '@/lib/utils';
-import { IconBrandGithub, IconSwords } from '@tabler/icons-react';
+import { useAuth } from '@/lib/auth-context';
+import { IconSwords } from '@tabler/icons-react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useState } from 'react';
+import { toast } from 'sonner';
 
 export default function SignupPage() {
-  const router = useRouter();
+  const { register } = useAuth();
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    router.push('/');
+    if (password !== confirmPassword) {
+      toast.error('Passwords do not match');
+      return;
+    }
+    setLoading(true);
+    const result = await register(username, password);
+    if (result.error) {
+      toast.error(result.error);
+    }
+    setLoading(false);
   }
 
   return (
@@ -34,73 +48,54 @@ export default function SignupPage() {
 
         {/* Form */}
         <form onSubmit={handleSubmit} className='space-y-4'>
-          <div className='grid grid-cols-2 gap-3'>
-            <div className='space-y-2'>
-              <Label htmlFor='firstName'>First name</Label>
-              <Input
-                id='firstName'
-                placeholder='Alex'
-                className='h-11 rounded-xl'
-              />
-            </div>
-            <div className='space-y-2'>
-              <Label htmlFor='lastName'>Last name</Label>
-              <Input
-                id='lastName'
-                placeholder='Johnson'
-                className='h-11 rounded-xl'
-              />
-            </div>
-          </div>
           <div className='space-y-2'>
             <Label htmlFor='username'>Username</Label>
             <Input
               id='username'
               placeholder='codehero'
-              className='h-11 rounded-xl'
-            />
-          </div>
-          <div className='space-y-2'>
-            <Label htmlFor='email'>Email</Label>
-            <Input
-              id='email'
-              type='email'
-              placeholder='warrior@codewar.dev'
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              disabled={loading}
+              required
               className='h-11 rounded-xl'
             />
           </div>
           <div className='space-y-2'>
             <Label htmlFor='password'>Password</Label>
-            <Input id='password' type='password' className='h-11 rounded-xl' />
+            <Input
+              id='password'
+              type='password'
+              placeholder='Create a password'
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              disabled={loading}
+              required
+              minLength={6}
+              className='h-11 rounded-xl'
+            />
+          </div>
+          <div className='space-y-2'>
+            <Label htmlFor='confirm-password'>Confirm Password</Label>
+            <Input
+              id='confirm-password'
+              type='password'
+              placeholder='Confirm your password'
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              disabled={loading}
+              required
+              minLength={6}
+              className='h-11 rounded-xl'
+            />
           </div>
           <Button
             type='submit'
+            disabled={loading}
             className='h-11 w-full rounded-xl bg-gradient-to-r from-violet-500 to-fuchsia-500 font-semibold text-white hover:from-violet-600 hover:to-fuchsia-600'
           >
-            Start Your Journey
+            {loading ? 'Creating account...' : 'Start Your Journey'}
           </Button>
         </form>
-
-        {/* Divider */}
-        <div className='relative'>
-          <div className='absolute inset-0 flex items-center'>
-            <span className='w-full border-t' />
-          </div>
-          <div className='relative flex justify-center text-xs uppercase'>
-            <span className={cn('bg-background text-muted-foreground px-2')}>
-              or
-            </span>
-          </div>
-        </div>
-
-        <Button
-          variant='outline'
-          className='h-11 w-full rounded-xl'
-          onClick={() => router.push('/')}
-        >
-          <IconBrandGithub className='mr-2 size-5' />
-          Continue with GitHub
-        </Button>
 
         <p className='text-muted-foreground text-center text-sm'>
           Already a warrior?{' '}
