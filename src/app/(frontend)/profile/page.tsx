@@ -1,6 +1,5 @@
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { currentUser, achievementsData } from '@/constants/mock-codewar';
 import {
@@ -8,11 +7,8 @@ import {
   IconCode,
   IconTrophy,
   IconCalendar,
-  IconMail,
-  IconSettings,
-  IconLogout
+  IconMail
 } from '@tabler/icons-react';
-import Link from 'next/link';
 
 export default function ProfilePage() {
   const unlockedAchievements = achievementsData.filter(
@@ -145,26 +141,6 @@ export default function ProfilePage() {
           ))}
         </div>
       </section>
-
-      {/* Actions */}
-      <div className='space-y-2'>
-        <Button
-          variant='outline'
-          className='h-11 w-full justify-start rounded-xl'
-        >
-          <IconSettings className='mr-2 size-4' />
-          Settings
-        </Button>
-        <Link href='/logout' className='block'>
-          <Button
-            variant='outline'
-            className='h-11 w-full justify-start rounded-xl text-red-500 hover:text-red-600'
-          >
-            <IconLogout className='mr-2 size-4' />
-            Sign out
-          </Button>
-        </Link>
-      </div>
     </div>
   );
 }
