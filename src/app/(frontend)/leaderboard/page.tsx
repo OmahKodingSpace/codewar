@@ -1,12 +1,8 @@
 'use client';
 
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
-import {
-  leaderboardFullData,
-  programmingLanguages,
-  currentUser
-} from '@/constants/mock-codewar';
+import { useAuth } from '@/lib/auth-context';
 import { cn } from '@/lib/utils';
 import {
   IconTrophy,
@@ -14,49 +10,90 @@ import {
   IconAward,
   IconFilter
 } from '@tabler/icons-react';
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 type TimePeriod = 'all' | 'month' | 'week' | 'today';
 type DifficultyFilter = 'all' | 'easy' | 'medium' | 'hard' | 'expert';
 
+interface LeaderboardEntry {
+  rank: number;
+  userId: string;
+  username: string;
+  score: number;
+  level: number;
+  primaryLanguage: string;
+}
+
 export default function LeaderboardPage() {
+  const { user } = useAuth();
   const [language, setLanguage] = useState<string>('all');
   const [difficulty, setDifficulty] = useState<DifficultyFilter>('all');
   const [timePeriod, setTimePeriod] = useState<TimePeriod>('all');
   const [showFilters, setShowFilters] = useState(false);
+  const [entries, setEntries] = useState<LeaderboardEntry[]>([]);
+  const [languages, setLanguages] = useState<string[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const ranked = useMemo(() => {
-    let entries = leaderboardFullData.map((entry) => {
-      let score = entry.xp;
+  // Fetch available languages once
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch('/api/languages', { signal: controller.signal })
+      .then((r) => {
+        if (!r.ok) throw new Error(`Languages API returned ${r.status}`);
+        return r.json();
+      })
+      .then((data) => {
+        const langs = data?.languages;
+        setLanguages(
+          Array.isArray(langs) ? langs.map((l: { name: string }) => l.name) : []
+        );
+      })
+      .catch((err) => {
+        if (err instanceof DOMException && err.name === 'AbortError') return;
+        console.error('Failed to fetch languages:', err);
+      });
+    return () => controller.abort();
+  }, []);
 
-      // Apply time filter
-      if (timePeriod === 'today') score = entry.todayXp;
-      else if (timePeriod === 'week') score = entry.weekXp;
-      else if (timePeriod === 'month') score = entry.monthXp;
+  // Fetch leaderboard when filters change
+  const fetchLeaderboard = useCallback(
+    async (signal?: AbortSignal) => {
+      setLoading(true);
+      try {
+        const params = new URLSearchParams({
+          period: timePeriod,
+          difficulty,
+          language
+        });
+        const res = await fetch(`/api/leaderboard?${params}`, { signal });
+        if (res.ok) {
+          const data = await res.json();
+          setEntries(Array.isArray(data.entries) ? data.entries : []);
+        } else {
+          setEntries([]);
+        }
+        setLoading(false);
+      } catch (e) {
+        if (e instanceof DOMException && e.name === 'AbortError') return;
+        setEntries([]);
+        setLoading(false);
+      }
+    },
+    [timePeriod, difficulty, language]
+  );
 
-      // Apply difficulty filter
-      if (difficulty === 'easy') score = entry.easyScore;
-      else if (difficulty === 'medium') score = entry.mediumScore;
-      else if (difficulty === 'hard') score = entry.hardScore;
-      else if (difficulty === 'expert') score = entry.expertScore;
+  useEffect(() => {
+    const controller = new AbortController();
+    fetchLeaderboard(controller.signal);
+    return () => controller.abort();
+  }, [fetchLeaderboard]);
 
-      return { ...entry, displayScore: score };
-    });
-
-    // Apply language filter
-    if (language !== 'all') {
-      entries = entries.filter((e) => e.primaryLanguage === language);
-    }
-
-    // Sort by score descending
-    entries.sort((a, b) => b.displayScore - a.displayScore);
-
-    // Re-rank
-    return entries.map((e, i) => ({ ...e, displayRank: i + 1 }));
-  }, [language, difficulty, timePeriod]);
-
-  const top3 = ranked.slice(0, 3);
-  const rest = ranked.slice(3);
+  const showPodium = !loading && entries.length >= 3;
+  const top3 = useMemo(() => entries.slice(0, 3), [entries]);
+  const listEntries = useMemo(
+    () => (entries.length >= 3 ? entries.slice(3) : entries),
+    [entries]
+  );
 
   const activeFilterCount =
     (language !== 'all' ? 1 : 0) +
@@ -170,7 +207,7 @@ export default function LeaderboardPage() {
               >
                 All
               </button>
-              {programmingLanguages.map((lang) => (
+              {languages.map((lang) => (
                 <button
                   key={lang}
                   onClick={() => setLanguage(lang)}
@@ -189,20 +226,56 @@ export default function LeaderboardPage() {
         </div>
       )}
 
-      {/* Podium - only show if we have at least 3 */}
-      {top3.length >= 3 && (
+      {/* Loading skeleton */}
+      {loading && (
+        <div className='space-y-2'>
+          <div className='flex items-end justify-center gap-3 px-2'>
+            {[14, 28, 14].map((h, i) => (
+              <div key={i} className='flex flex-1 flex-col items-center gap-2'>
+                <div className='bg-muted size-14 animate-pulse rounded-full' />
+                <div className='bg-muted h-3 w-16 animate-pulse rounded' />
+                <div
+                  className={`bg-muted w-full animate-pulse rounded-t-xl`}
+                  style={{ height: `${h * 4}px` }}
+                />
+              </div>
+            ))}
+          </div>
+          {Array.from({ length: 5 }).map((_, i) => (
+            <div
+              key={i}
+              className='flex items-center gap-3 rounded-xl border p-3.5'
+            >
+              <div className='bg-muted size-8 animate-pulse rounded-full' />
+              <div className='bg-muted size-9 animate-pulse rounded-full' />
+              <div className='flex-1 space-y-1.5'>
+                <div className='bg-muted h-3 w-24 animate-pulse rounded' />
+                <div className='bg-muted h-2.5 w-16 animate-pulse rounded' />
+              </div>
+              <div className='space-y-1 text-right'>
+                <div className='bg-muted ml-auto h-3 w-12 animate-pulse rounded' />
+                <div className='bg-muted ml-auto h-2.5 w-8 animate-pulse rounded' />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Podium */}
+      {showPodium && (
         <div className='flex items-end justify-center gap-3 px-2'>
           {/* 2nd Place */}
           <div className='flex flex-1 flex-col items-center'>
             <Avatar className='size-14 ring-2 ring-gray-300'>
-              <AvatarImage src={top3[1].avatar} alt={top3[1].name} />
-              <AvatarFallback>{top3[1].name.charAt(0)}</AvatarFallback>
+              <AvatarFallback>
+                {top3[1].username.slice(0, 2).toUpperCase()}
+              </AvatarFallback>
             </Avatar>
             <p className='mt-1.5 text-center text-sm leading-tight font-semibold'>
-              {top3[1].name.split(' ')[0]}
+              {top3[1].username}
             </p>
             <p className='text-muted-foreground text-xs'>
-              {top3[1].displayScore.toLocaleString()} XP
+              {top3[1].score.toLocaleString()} XP
             </p>
             <div className='mt-2 flex h-20 w-full items-start justify-center rounded-t-xl bg-gradient-to-t from-gray-200 to-gray-100 pt-3 dark:from-gray-800 dark:to-gray-700'>
               <IconMedal className='size-6 text-gray-500' />
@@ -213,16 +286,17 @@ export default function LeaderboardPage() {
           <div className='flex flex-1 flex-col items-center'>
             <div className='relative'>
               <Avatar className='size-16 ring-2 ring-yellow-400'>
-                <AvatarImage src={top3[0].avatar} alt={top3[0].name} />
-                <AvatarFallback>{top3[0].name.charAt(0)}</AvatarFallback>
+                <AvatarFallback>
+                  {top3[0].username.slice(0, 2).toUpperCase()}
+                </AvatarFallback>
               </Avatar>
               <span className='absolute -top-2 -right-2 text-xl'>👑</span>
             </div>
             <p className='mt-1.5 text-center text-sm leading-tight font-bold'>
-              {top3[0].name.split(' ')[0]}
+              {top3[0].username}
             </p>
             <p className='text-muted-foreground text-xs'>
-              {top3[0].displayScore.toLocaleString()} XP
+              {top3[0].score.toLocaleString()} XP
             </p>
             <div className='mt-2 flex h-28 w-full items-start justify-center rounded-t-xl bg-gradient-to-t from-yellow-300 to-yellow-100 pt-3 dark:from-yellow-700 dark:to-yellow-600'>
               <IconTrophy className='size-7 text-yellow-600 dark:text-yellow-300' />
@@ -232,14 +306,15 @@ export default function LeaderboardPage() {
           {/* 3rd Place */}
           <div className='flex flex-1 flex-col items-center'>
             <Avatar className='size-14 ring-2 ring-amber-500'>
-              <AvatarImage src={top3[2].avatar} alt={top3[2].name} />
-              <AvatarFallback>{top3[2].name.charAt(0)}</AvatarFallback>
+              <AvatarFallback>
+                {top3[2].username.slice(0, 2).toUpperCase()}
+              </AvatarFallback>
             </Avatar>
             <p className='mt-1.5 text-center text-sm leading-tight font-semibold'>
-              {top3[2].name.split(' ')[0]}
+              {top3[2].username}
             </p>
             <p className='text-muted-foreground text-xs'>
-              {top3[2].displayScore.toLocaleString()} XP
+              {top3[2].score.toLocaleString()} XP
             </p>
             <div className='mt-2 flex h-14 w-full items-start justify-center rounded-t-xl bg-gradient-to-t from-amber-300 to-amber-100 pt-3 dark:from-amber-800 dark:to-amber-700'>
               <IconAward className='size-5 text-amber-700 dark:text-amber-300' />
@@ -249,28 +324,29 @@ export default function LeaderboardPage() {
       )}
 
       {/* Rest of rankings */}
-      {rest.length > 0 ? (
+      {!loading && listEntries.length > 0 && (
         <div className='space-y-2'>
-          {rest.map((entry) => (
+          {listEntries.map((entry) => (
             <div
               key={entry.userId}
               className={cn(
                 'hover:bg-accent/50 flex items-center gap-3 rounded-xl border p-3.5 transition-colors',
-                entry.userId === currentUser.id &&
+                entry.userId === user?.id &&
                   'border-violet-400/40 bg-violet-50/50 dark:bg-violet-950/20'
               )}
             >
               <span className='bg-muted text-muted-foreground flex size-8 shrink-0 items-center justify-center rounded-full text-sm font-bold'>
-                {entry.displayRank}
+                {entry.rank}
               </span>
               <Avatar className='size-9'>
-                <AvatarImage src={entry.avatar} alt={entry.name} />
-                <AvatarFallback>{entry.name.charAt(0)}</AvatarFallback>
+                <AvatarFallback>
+                  {entry.username.slice(0, 2).toUpperCase()}
+                </AvatarFallback>
               </Avatar>
               <div className='flex-1'>
                 <p className='text-sm font-medium'>
-                  {entry.name}
-                  {entry.userId === currentUser.id && (
+                  {entry.username}
+                  {entry.userId === user?.id && (
                     <Badge
                       variant='secondary'
                       className='ml-1.5 px-1.5 text-[10px]'
@@ -285,7 +361,7 @@ export default function LeaderboardPage() {
               </div>
               <div className='text-right'>
                 <p className='text-sm font-bold'>
-                  {entry.displayScore.toLocaleString()}
+                  {entry.score.toLocaleString()}
                 </p>
                 <p className='text-muted-foreground text-[10px]'>
                   Lvl {entry.level}
@@ -294,14 +370,15 @@ export default function LeaderboardPage() {
             </div>
           ))}
         </div>
-      ) : (
-        top3.length < 3 && (
-          <div className='rounded-xl border-2 border-dashed p-8 text-center'>
-            <p className='text-muted-foreground text-sm'>
-              No warriors found with these filters
-            </p>
-          </div>
-        )
+      )}
+
+      {/* Empty state */}
+      {!loading && entries.length === 0 && (
+        <div className='rounded-xl border-2 border-dashed p-8 text-center'>
+          <p className='text-muted-foreground text-sm'>
+            No warriors found with these filters
+          </p>
+        </div>
       )}
     </div>
   );
