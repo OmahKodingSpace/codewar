@@ -56,7 +56,7 @@ export async function generateChallenge(
 
 Difficulty guide: ${difficultyGuide[difficulty] || difficultyGuide.medium}
 
-Return a JSON object with this exact structure (no markdown, just raw JSON):
+CRITICAL: Return ONLY valid JSON with EXACTLY this structure (no markdown, code fences, or extra text):
 {
   "title": "Short challenge title (2-5 words)",
   "description": "One sentence describing what this challenge tests",
@@ -71,15 +71,21 @@ Return a JSON object with this exact structure (no markdown, just raw JSON):
   ]
 }
 
-Rules:
-- Generate exactly 5 multiple-choice questions
-- Each question must have exactly 4 options
-- correctIndex is 0-based (0, 1, 2, or 3)
-- Questions should be specific to ${language} programming
-- Questions should test understanding, not just memorization
-- Make questions varied — mix conceptual, practical, and code-reading questions
-- For ${difficulty} difficulty, adjust complexity accordingly
-- Do NOT include any markdown formatting, code fences, or explanation — only the JSON object
+MANDATORY REQUIREMENTS (failure means invalid response):
+- Generate EXACTLY 5 questions
+- EVERY question MUST have EXACTLY 4 options (no more, no less)
+- Each option must be a complete, non-empty string (minimum 5 characters)
+- correctIndex MUST be 0, 1, 2, or 3 (0-based)
+- All questions must be specific to ${language} programming
+- Questions must test understanding, not memorization
+- Mix conceptual, practical, and code-reading questions
+- Adjust complexity for ${difficulty} difficulty level
+
+STRICT FORMATTING:
+- Output ONLY valid JSON
+- NO markdown, code fences, backticks, or explanatory text
+- NO text before or after the JSON object
+- NO incomplete options
 ${recentChallenges.length > 0 ? `\nIMPORTANT: Do NOT repeat these recent challenges. Generate something completely different:\n${recentChallenges.map((t, i) => `${i + 1}. ${t}`).join('\n')}` : ''}`;
 
   const completion = await openai.chat.completions.create({
