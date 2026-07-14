@@ -9,6 +9,7 @@ import {
 } from '@/lib/db/schema';
 import { getAuthFromCookie } from '@/lib/auth';
 import { generateChallenge, getXpReward } from '@/lib/ai-challenge';
+import { withLock } from '@/lib/challenge-lock';
 import { eq, and, desc } from 'drizzle-orm';
 import { NextResponse } from 'next/server';
 
@@ -86,124 +87,168 @@ export async function GET(request: Request) {
       });
     }
 
-    // Fetch last 10 challenges for this language to avoid repetition
-    const recentChallenges = await db
-      .select({ title: challenges.title })
-      .from(challenges)
-      .where(eq(challenges.languageId, lang.id))
-      .orderBy(desc(challenges.createdAt))
-      .limit(10);
-
-    const recentTitles = recentChallenges.map((c) => c.title);
-
-    // Generate new challenge via AI
-    const generated = await generateChallenge(
-      languageName,
-      difficulty,
-      recentTitles
-    );
-
-    // console.log('Generated challenge:', generated);
-
-    // Find or create category
-    let categoryId: string | null = null;
-    if (generated.category) {
-      const [existingCat] = await db
+    // Lock on languageName:difficulty to prevent duplicate concurrent generations
+    const result = await withLock(`${languageName}:${difficulty}`, async () => {
+      // Double-check: another request may have already generated and inserted while we were waiting on the lock
+      const [recheck] = await db
         .select()
-        .from(categories)
-        .where(eq(categories.name, generated.category))
+        .from(challenges)
+        .where(
+          and(
+            eq(challenges.languageId, lang.id),
+            eq(challenges.difficulty, difficulty),
+            eq(challenges.generatedDate, today)
+          )
+        )
         .limit(1);
 
-      if (existingCat) {
-        categoryId = existingCat.id;
-      } else {
-        const slug = generated.category.toLowerCase().replace(/\s+/g, '-');
-        const [newCat] = await db
-          .insert(categories)
-          .values({ name: generated.category, slug })
-          .onConflictDoNothing({ target: categories.slug })
-          .returning();
-        categoryId = newCat?.id ?? null;
+      if (recheck) {
+        const recheckQuestions = await db
+          .select({
+            id: questions.id,
+            question: questions.question,
+            options: questions.options,
+            correctIndex: questions.correctIndex,
+            sortOrder: questions.sortOrder
+          })
+          .from(questions)
+          .where(eq(questions.challengeId, recheck.id))
+          .orderBy(questions.sortOrder);
+
+        return {
+          challenge: {
+            id: recheck.id,
+            title: recheck.title,
+            description: recheck.description,
+            language: languageName,
+            difficulty: recheck.difficulty,
+            xpReward: recheck.xpReward
+          },
+          questions: recheckQuestions
+        };
       }
-    }
 
-    const xpReward = getXpReward(difficulty);
+      // Fetch last 10 challenges for this language to avoid repetition
+      const recentChallenges = await db
+        .select({ title: challenges.title })
+        .from(challenges)
+        .where(eq(challenges.languageId, lang.id))
+        .orderBy(desc(challenges.createdAt))
+        .limit(10);
 
-    // Insert challenge
-    const [newChallenge] = await db
-      .insert(challenges)
-      .values({
-        title: generated.title,
-        description: generated.description,
-        languageId: lang.id,
+      const recentTitles = recentChallenges.map((c) => c.title);
+
+      // Generate new challenge via AI
+      const generated = await generateChallenge(
+        languageName,
         difficulty,
-        categoryId,
-        xpReward,
-        generatedDate: today
-      })
-      .returning();
+        recentTitles
+      );
 
-    // Insert questions
-    const insertedQuestions = [];
-    for (let i = 0; i < generated.questions.length; i++) {
-      const q = generated.questions[i];
-      const [inserted] = await db
-        .insert(questions)
-        .values({
-          challengeId: newChallenge.id,
-          question: q.question,
-          options: q.options,
-          correctIndex: q.correctIndex,
-          sortOrder: i
-        })
-        .returning({
-          id: questions.id,
-          question: questions.question,
-          options: questions.options,
-          correctIndex: questions.correctIndex,
-          sortOrder: questions.sortOrder
-        });
-      insertedQuestions.push(inserted);
-    }
+      // console.log('Generated challenge:', generated);
 
-    // Insert tags
-    if (generated.tags?.length) {
-      for (const tagName of generated.tags) {
-        const slug = tagName.toLowerCase().replace(/\s+/g, '-');
-        let [existingTag] = await db
+      // Find or create category
+      let categoryId: string | null = null;
+      if (generated.category) {
+        const [existingCat] = await db
           .select()
-          .from(tags)
-          .where(eq(tags.slug, slug))
+          .from(categories)
+          .where(eq(categories.name, generated.category))
           .limit(1);
 
-        if (!existingTag) {
-          const [newTag] = await db
-            .insert(tags)
-            .values({ name: tagName, slug })
-            .onConflictDoNothing({ target: tags.slug })
+        if (existingCat) {
+          categoryId = existingCat.id;
+        } else {
+          const slug = generated.category.toLowerCase().replace(/\s+/g, '-');
+          const [newCat] = await db
+            .insert(categories)
+            .values({ name: generated.category, slug })
+            .onConflictDoNothing({ target: categories.slug })
             .returning();
-          existingTag = newTag ?? existingTag;
-        }
-
-        if (existingTag) {
-          await db
-            .insert(challengeTags)
-            .values({ challengeId: newChallenge.id, tagId: existingTag.id });
+          categoryId = newCat?.id ?? null;
         }
       }
-    }
 
-    return NextResponse.json({
-      challenge: {
-        id: newChallenge.id,
-        title: newChallenge.title,
-        description: newChallenge.description,
-        language: languageName,
-        difficulty: newChallenge.difficulty,
-        xpReward: newChallenge.xpReward
-      },
-      questions: insertedQuestions
+      const xpReward = getXpReward(difficulty);
+
+      // Insert challenge
+      const [newChallenge] = await db
+        .insert(challenges)
+        .values({
+          title: generated.title,
+          description: generated.description,
+          languageId: lang.id,
+          difficulty,
+          categoryId,
+          xpReward,
+          generatedDate: today
+        })
+        .returning();
+
+      // Insert questions
+      const insertedQuestions = [];
+      for (let i = 0; i < generated.questions.length; i++) {
+        const q = generated.questions[i];
+        const [inserted] = await db
+          .insert(questions)
+          .values({
+            challengeId: newChallenge.id,
+            question: q.question,
+            options: q.options,
+            correctIndex: q.correctIndex,
+            sortOrder: i
+          })
+          .returning({
+            id: questions.id,
+            question: questions.question,
+            options: questions.options,
+            correctIndex: questions.correctIndex,
+            sortOrder: questions.sortOrder
+          });
+        insertedQuestions.push(inserted);
+      }
+
+      // Insert tags
+      if (generated.tags?.length) {
+        for (const tagName of generated.tags) {
+          const slug = tagName.toLowerCase().replace(/\s+/g, '-');
+          let [existingTag] = await db
+            .select()
+            .from(tags)
+            .where(eq(tags.slug, slug))
+            .limit(1);
+
+          if (!existingTag) {
+            const [newTag] = await db
+              .insert(tags)
+              .values({ name: tagName, slug })
+              .onConflictDoNothing({ target: tags.slug })
+              .returning();
+            existingTag = newTag ?? existingTag;
+          }
+
+          if (existingTag) {
+            await db
+              .insert(challengeTags)
+              .values({ challengeId: newChallenge.id, tagId: existingTag.id });
+          }
+        }
+      }
+
+      return {
+        challenge: {
+          id: newChallenge.id,
+          title: newChallenge.title,
+          description: newChallenge.description,
+          language: languageName,
+          difficulty: newChallenge.difficulty,
+          xpReward: newChallenge.xpReward
+        },
+        questions: insertedQuestions
+      };
     });
+
+    return NextResponse.json(result);
   } catch (error) {
     console.error('Challenges error:', (error as Error).message);
     return NextResponse.json(

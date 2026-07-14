@@ -37,6 +37,13 @@ export async function generateChallenge(
   difficulty: string,
   recentChallenges: string[] = []
 ): Promise<GeneratedChallenge> {
+  console.log(
+    'Generating challenge for',
+    language,
+    difficulty,
+    recentChallenges
+  );
+
   const difficultyGuide: Record<string, string> = {
     easy: 'beginner-friendly concepts, basic syntax, simple logic',
     medium: 'intermediate concepts, common patterns, moderate complexity',
