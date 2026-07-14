@@ -59,6 +59,12 @@ export async function middleware(request: NextRequest) {
       const homeUrl = new URL('/', request.url);
       return NextResponse.redirect(homeUrl);
     }
+
+    // Block access to dashboard child routes - only /dashboard allowed
+    if (pathname !== '/dashboard') {
+      const dashboardUrl = new URL('/', request.url);
+      return NextResponse.redirect(dashboardUrl);
+    }
   }
 
   return NextResponse.next();
