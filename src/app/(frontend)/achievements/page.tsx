@@ -26,6 +26,15 @@ export default function AchievementsPage() {
   const unearnedBadges = badgesData.filter((b) => !b.earned);
 
   return (
+    <div className='flex min-h-[60vh] flex-col items-center justify-center text-center'>
+      <span className='text-5xl'>🏅</span>
+      <h1 className='mt-4 text-2xl font-bold'>Achievements & Badges</h1>
+      <p className='text-muted-foreground mt-2 text-sm'>Coming Soon</p>
+    </div>
+  );
+
+  // eslint-disable-next-line no-unreachable
+  return (
     <div className='space-y-6'>
       <div>
         <h1 className='text-2xl font-bold'>Achievements & Badges</h1>

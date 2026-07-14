@@ -64,6 +64,15 @@ export default function LeaderboardPage() {
     (timePeriod !== 'all' ? 1 : 0);
 
   return (
+    <div className='flex min-h-[60vh] flex-col items-center justify-center text-center'>
+      <span className='text-5xl'>🏆</span>
+      <h1 className='mt-4 text-2xl font-bold'>Leaderboard</h1>
+      <p className='text-muted-foreground mt-2 text-sm'>Coming Soon</p>
+    </div>
+  );
+
+  // eslint-disable-next-line no-unreachable
+  return (
     <div className='space-y-6'>
       <div className='flex items-center justify-between'>
         <div>
