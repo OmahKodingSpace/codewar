@@ -6,22 +6,14 @@ import { Label } from '@/components/ui/label';
 import { useAuth } from '@/lib/auth-context';
 import { IconSwords } from '@tabler/icons-react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { toast } from 'sonner';
 
 export default function LoginPage() {
-  const { login, user, loading: authLoading } = useAuth();
-  const router = useRouter();
+  const { login } = useAuth();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    if (!authLoading && user) {
-      router.push('/');
-    }
-  }, [user, authLoading, router]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -31,10 +23,6 @@ export default function LoginPage() {
       toast.error(result.error);
     }
     setLoading(false);
-  }
-
-  if (authLoading || user) {
-    return null;
   }
 
   return (

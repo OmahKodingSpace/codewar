@@ -16,6 +16,8 @@ const publicPaths = [
   '/terms-of-service'
 ];
 
+const authOnlyPaths = ['/login', '/signup'];
+
 function isPublicPath(pathname: string) {
   return publicPaths.some(
     (path) => pathname === path || pathname.startsWith(path + '/')
@@ -34,16 +36,27 @@ async function getTokenPayload(token: string) {
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // Allow public paths and static assets
-  if (
-    isPublicPath(pathname) ||
-    pathname.startsWith('/_next') ||
-    pathname.startsWith('/monitoring')
-  ) {
+  // Allow static assets
+  if (pathname.startsWith('/_next') || pathname.startsWith('/monitoring')) {
     return NextResponse.next();
   }
 
   const token = request.cookies.get('auth-token')?.value;
+  const isAuthOnlyPath = authOnlyPaths.some((path) => pathname === path);
+
+  // Redirect authenticated users away from login/signup
+  if (token && isAuthOnlyPath) {
+    const payload = await getTokenPayload(token);
+    if (payload) {
+      const homeUrl = new URL('/', request.url);
+      return NextResponse.redirect(homeUrl);
+    }
+  }
+
+  // Allow public paths (including login/signup for unauthenticated users)
+  if (isPublicPath(pathname)) {
+    return NextResponse.next();
+  }
 
   // Authenticated frontend pages (/, /challenges, /leaderboard, etc.)
   // require login but not admin role
