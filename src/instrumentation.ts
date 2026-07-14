@@ -17,8 +17,13 @@ const sentryOptions: Sentry.NodeOptions | Sentry.EdgeOptions = {
   debug: false
 };
 
+// Only "true"/"1" disable Sentry — a plain env string like "false" is truthy in JS.
+const sentryDisabled = ['1', 'true'].includes(
+  (process.env.NEXT_PUBLIC_SENTRY_DISABLED ?? '').trim().toLowerCase()
+);
+
 export async function register() {
-  if (!process.env.NEXT_PUBLIC_SENTRY_DISABLED) {
+  if (!sentryDisabled) {
     if (process.env.NEXT_RUNTIME === 'nodejs') {
       // Node.js Sentry configuration
       Sentry.init(sentryOptions);

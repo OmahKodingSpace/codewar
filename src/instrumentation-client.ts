@@ -3,12 +3,25 @@
 // https://docs.sentry.io/platforms/javascript/guides/nextjs/
 import * as Sentry from '@sentry/nextjs';
 
-if (!process.env.NEXT_PUBLIC_SENTRY_DISABLED) {
+// Only "true"/"1" disable Sentry — a plain env string like "false" is truthy in JS.
+const sentryDisabled = ['1', 'true'].includes(
+  (process.env.NEXT_PUBLIC_SENTRY_DISABLED ?? '').trim().toLowerCase()
+);
+
+if (!sentryDisabled) {
   Sentry.init({
     dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
 
     // Add optional integrations for additional features
-    integrations: [Sentry.replayIntegration()],
+    integrations: [
+      Sentry.replayIntegration(),
+      // User feedback widget. autoInject: false — we attach it to our own
+      // "Report a bug" button instead of rendering Sentry's default launcher.
+      Sentry.feedbackIntegration({
+        autoInject: false,
+        colorScheme: 'system'
+      })
+    ],
 
     // Adds request headers and IP for users, for more info visit
     sendDefaultPii: true,

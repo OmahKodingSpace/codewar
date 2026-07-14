@@ -1,5 +1,5 @@
 import { db } from '@/lib/db';
-import { users } from '@/lib/db/schema';
+import { users, userStats } from '@/lib/db/schema';
 import { createToken, setAuthCookie } from '@/lib/auth';
 import { hash } from 'bcryptjs';
 import { eq } from 'drizzle-orm';
@@ -7,9 +7,11 @@ import { NextResponse } from 'next/server';
 
 export async function POST(request: Request) {
   try {
+    // console.log('Register request received');
     const { username, password } = await request.json();
 
     if (!username || !password) {
+      // console.log('Username and password are required');
       return NextResponse.json(
         { error: 'Username and password are required' },
         { status: 400 }
@@ -43,6 +45,10 @@ export async function POST(request: Request) {
       .values({ username, passwordHash })
       .returning({ id: users.id, username: users.username, role: users.role });
 
+    // Every user starts as a warrior with a stats row so they appear on the
+    // leaderboard and hero from day one.
+    await db.insert(userStats).values({ userId: user.id });
+
     const token = await createToken({
       userId: user.id,
       username: user.username,
@@ -55,6 +61,19 @@ export async function POST(request: Request) {
     });
   } catch (error) {
     console.error('Register error:', error);
+
+    const pgCode =
+      error instanceof Error && 'cause' in error
+        ? (error.cause as { code?: string })?.code
+        : undefined;
+
+    if (pgCode === '23505') {
+      return NextResponse.json(
+        { error: 'Username already taken' },
+        { status: 409 }
+      );
+    }
+
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

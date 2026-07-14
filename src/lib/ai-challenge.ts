@@ -1,9 +1,9 @@
-import Anthropic from '@anthropic-ai/sdk';
+import OpenAI from 'openai';
 
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY!,
-  ...(process.env.ANTHROPIC_BASE_URL && {
-    baseURL: process.env.ANTHROPIC_BASE_URL
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY!,
+  ...(process.env.OPENAI_BASE_URL && {
+    baseURL: process.env.OPENAI_BASE_URL
   })
 });
 
@@ -75,21 +75,35 @@ Rules:
 - Do NOT include any markdown formatting, code fences, or explanation — only the JSON object
 ${recentChallenges.length > 0 ? `\nIMPORTANT: Do NOT repeat these recent challenges. Generate something completely different:\n${recentChallenges.map((t, i) => `${i + 1}. ${t}`).join('\n')}` : ''}`;
 
-  const message = await anthropic.messages.create({
-    model: process.env.ANTHROPIC_MODEL || 'claude-haiku-4-5-20251001',
-    max_tokens: 2048,
+  const completion = await openai.chat.completions.create({
+    model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+    max_tokens: 8192,
+    response_format: { type: 'json_object' },
     messages: [{ role: 'user', content: prompt }]
   });
 
-  const text =
-    message.content[0].type === 'text' ? message.content[0].text : '';
+  console.log('Completion:', completion);
 
-  // Parse JSON from response (handle potential wrapping)
-  const jsonStr = text
-    .trim()
-    .replace(/^```json?\n?/, '')
-    .replace(/\n?```$/, '');
+  if (completion.choices[0]?.finish_reason === 'length') {
+    throw new Error(
+      'AI response truncated (hit max_tokens) — raise max_tokens'
+    );
+  }
+
+  const text = completion.choices[0]?.message?.content ?? '';
+
+  // Strip reasoning-model <think> blocks and code fences, then grab the JSON object
+  const cleaned = text.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+  const start = cleaned.indexOf('{');
+  const end = cleaned.lastIndexOf('}');
+  const jsonStr =
+    start !== -1 && end !== -1 ? cleaned.slice(start, end + 1) : cleaned;
+
+  console.log('JSON string:', jsonStr);
+
   const parsed = JSON.parse(jsonStr) as GeneratedChallenge;
+
+  console.log('Parsed:', parsed);
 
   // Validate structure
   if (

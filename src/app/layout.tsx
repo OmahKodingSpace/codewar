@@ -1,4 +1,5 @@
 import Providers from '@/components/layout/providers';
+import { ReportBugButton } from '@/components/report-bug-button';
 import { Toaster } from '@/components/ui/sonner';
 import { fontVariables } from '@/components/themes/font.config';
 import { DEFAULT_THEME } from '@/components/themes/theme.config';
@@ -67,6 +68,7 @@ export default async function RootLayout({
             <Providers activeThemeValue={themeToApply}>
               <Toaster />
               {children}
+              <ReportBugButton />
             </Providers>
           </ThemeProvider>
         </NuqsAdapter>

@@ -103,6 +103,8 @@ export async function GET(request: Request) {
       recentTitles
     );
 
+    // console.log('Generated challenge:', generated);
+
     // Find or create category
     let categoryId: string | null = null;
     if (generated.category) {
@@ -203,7 +205,7 @@ export async function GET(request: Request) {
       questions: insertedQuestions
     });
   } catch (error) {
-    console.error('Challenges error:', error);
+    console.error('Challenges error:', (error as Error).message);
     return NextResponse.json(
       { error: 'Failed to load challenge. Please try again.' },
       { status: 500 }
