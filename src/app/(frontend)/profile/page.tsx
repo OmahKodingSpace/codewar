@@ -165,13 +165,13 @@ export default function ProfilePage() {
 
       {/* Actions */}
       <div className='space-y-2'>
-        <Button
+        {/* <Button
           variant='outline'
           className='h-11 w-full justify-start rounded-xl'
         >
           <IconSettings className='mr-2 size-4' />
           Settings
-        </Button>
+        </Button> */}
         <Link href='/logout' className='block'>
           <Button
             variant='outline'
